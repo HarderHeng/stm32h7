@@ -382,7 +382,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "embassy-stm32h7-examples"
+name = "embassy-stm32h7"
 version = "0.1.0"
 dependencies = [
  "cortex-m",

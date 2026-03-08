@@ -1,6 +1,6 @@
 [package]
 edition = "2024"
-name = "embassy-stm32h7-examples"
+name = "embassy-stm32h7"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 publish = false
@@ -41,3 +41,7 @@ codegen-units = 1
 debug = false
 debug-assertions = false
 overflow-checks = false
+
+[[bin]]
+name = "stm32h7"
+path = "src/bin/main.rs"
