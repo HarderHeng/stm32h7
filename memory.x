@@ -1,14 +1,34 @@
+/* STM32H743 memory layout */
+
 MEMORY
 {
-    FLASH    : ORIGIN = 0x08000000, LENGTH = 2048K /* BANK_1 + BANK_2 */
-    RAM      : ORIGIN = 0x24000000, LENGTH = 512K  /* SRAM */
-    RAM_D3   : ORIGIN = 0x38000000, LENGTH = 64K   /* SRAM4 */
-}
+  /* FLASH */
 
-SECTIONS
-{
-    .ram_d3 :
-    {
-        *(.ram_d3)
-    } > RAM_D3
+  FLASH : ORIGIN = 0x08000000, LENGTH = 2048K
+
+
+  /* TCM */
+
+  ITCM  : ORIGIN = 0x00000000, LENGTH = 64K
+  DTCM  : ORIGIN = 0x20000000, LENGTH = 128K
+
+
+  /* AXI SRAM (main RAM) */
+
+  RAM : ORIGIN = 0x24000000, LENGTH = 512K
+
+
+  /* D2 SRAM */
+
+  RAM_D2 : ORIGIN = 0x30000000, LENGTH = 288K
+
+
+  /* D3 SRAM */
+
+  RAM_D3 : ORIGIN = 0x38000000, LENGTH = 64K
+
+
+  /* Backup */
+
+  BACKUP : ORIGIN = 0x38800000, LENGTH = 4K
 }
