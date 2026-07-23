@@ -47,7 +47,7 @@ async fn main(spawner: Spawner) {
         config.rcc.apb4_pre = APBPrescaler::DIV2;
         config.rcc.voltage_scale = VoltageScale::Scale1;
     }
-    let _p = embassy_stm32::init(config);
+    embassy_stm32::init(config);
 
     // --- TODO: wire real Embassy peripherals ---
     // CAN1: PB8 (RX) / PB9 (TX), 1 Mbps
