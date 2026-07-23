@@ -23,7 +23,6 @@ use crate::drivers::ImuSerial;
 pub struct ImuState {
     pub quat: [f32; 4],     // (w, x, y, z)
     pub ang_vel: [f32; 3], // body frame
-    pub updated: bool,
 }
 
 #[derive(Default)]
@@ -31,7 +30,6 @@ pub struct JointState {
     pub position: [f32; 23],
     pub velocity: [f32; 23],
     pub torque: [f32; 23],
-    pub feedback_stale: bool,
 }
 
 pub struct Pipeline {
@@ -69,27 +67,35 @@ impl Pipeline {
     /// Output layout (matches inference.yaml:5):
     ///   ang_vel:3 + gravity_b:3 + cmd_vel:3 + dof_pos:23 + dof_vel:23 + last_action:23
     pub fn build_observation(&self, cmd_vel: &[f32; 3], out: &mut [f32; OBS_DIM]) {
+        // Detect NaN/Inf in sensor inputs and substitute zeros. Without this,
+        // a single bad IMU sample would propagate through the MLP accumulator
+        // (saturating_add still yields NaN for NaN operands) and force the
+        // step_inference NaN guard to zero the entire output. Cleaning it at
+        // the source keeps the observation meaningful for the rest of the
+        // components (cmd_vel, last_action).
+        let clean = |v: f32| if v.is_finite() { v } else { 0.0 };
+
         let mut i = 0;
         // ang_vel
-        out[i..i + 3].copy_from_slice(&self.imu.ang_vel);
+        for j in 0..3 { out[i + j] = clean(self.imu.ang_vel[j]); }
         i += 3;
         // gravity_b = q_body^-1 * [0, 0, -1]
         let g = compute_gravity_body(&self.imu.quat);
-        out[i..i + 3].copy_from_slice(&g);
+        for j in 0..3 { out[i + j] = clean(g[j]); }
         i += 3;
         // cmd_vel
-        out[i..i + 3].copy_from_slice(cmd_vel);
+        for j in 0..3 { out[i + j] = clean(cmd_vel[j]); }
         i += 3;
         // dof_pos - default
         for j in 0..23 {
-            out[i + j] = self.joint.position[j] - DEFAULT_JOINT_ANGLES[j];
+            out[i + j] = clean(self.joint.position[j]) - DEFAULT_JOINT_ANGLES[j];
         }
         i += 23;
         // dof_vel
-        out[i..i + 23].copy_from_slice(&self.joint.velocity);
+        for j in 0..23 { out[i + j] = clean(self.joint.velocity[j]); }
         i += 23;
         // last_action
-        out[i..i + 23].copy_from_slice(&self.action);
+        for j in 0..23 { out[i + j] = clean(self.action[j]); }
     }
 
     /// One inference step: build obs → frame-stack → MLP forward → post-process.
@@ -273,6 +279,26 @@ mod tests {
             assert!(diff < 1.0, "joint {}: action {} vs default {}",
                     i, p.action[i], DEFAULT_JOINT_ANGLES[i]);
         }
+    }
+
+    #[test]
+    fn build_observation_cleans_nan_sensor_data() {
+        // IMU/joint fields containing NaN or Inf must be substituted with
+        // zero before reaching the MLP — otherwise saturating_add still
+        // produces NaN and the downstream guard zeroes the entire action.
+        let mut p = Pipeline::new();
+        p.imu.ang_vel = [f32::NAN, f32::INFINITY, 1.0];
+        p.joint.position[0] = f32::NAN;
+        p.joint.velocity[5] = f32::NEG_INFINITY;
+        let cmd = [2.0_f32; 3];
+        let mut out = [0.0_f32; OBS_DIM];
+        p.build_observation(&cmd, &mut out);
+        assert!(out.iter().all(|v| v.is_finite()),
+            "observation should contain no NaN/Inf, got {:?}", out);
+        // Cmd_vel must survive — it's not sensor-derived, it's command.
+        assert_eq!(out[9], 2.0);
+        assert_eq!(out[10], 0.0);
+        assert_eq!(out[11], 0.0);
     }
 
     #[test]
