@@ -63,10 +63,11 @@ impl Default for CanBusHw {
 }
 
 impl CanBus for CanBusHw {
-    fn transmit(&mut self, frame: &CanFrame) -> Result<(), CanError> {
-        // Real impl: embassy_sync::Channel::try_send → async tx_worker → can.write
-        let _ = frame;
-        Ok(())
+    fn transmit(&mut self, _frame: &CanFrame) -> Result<(), CanError> {
+        // Stub: real impl would forward through embassy_sync::Channel to an
+        // async tx_worker → can.write. Until drivers land, refuse so callers
+        // don't silently drop frames they think are reaching motors.
+        Err(CanError::Hardware)
     }
     fn receive(&mut self) -> Option<CanFrame> { None }
 }
@@ -137,8 +138,12 @@ mod tests {
     #[test]
     fn flash_capacity() { assert_eq!(W25Q64::new().capacity(), 8 * 1024 * 1024); }
     #[test]
-    fn can_transmit() {
+    fn can_transmit_stub_refuses() {
+        // Stub: real impl would forward to CAN hardware. Until drivers
+        // land, transmit returns Err(CanError::Hardware) so callers know
+        // frames are NOT reaching motors (rather than silently dropped).
         let mut c = CanBusHw::new();
-        assert!(c.transmit(&CanFrame { id: crate::canproto::CanId(1), dlc: 8, data: [0; 8] }).is_ok());
+        let frame = CanFrame { id: crate::canproto::CanId(1), dlc: 8, data: [0; 8] };
+        assert_eq!(c.transmit(&frame), Err(CanError::Hardware));
     }
 }
