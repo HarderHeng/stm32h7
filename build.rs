@@ -32,7 +32,9 @@ fn main() {
  * dev mode where only a warning is printed. */
 
     let manifest_bytes = include_bytes!("weights/manifest.json");
-    let manifest = std::str::from_utf8(manifest_bytes).unwrap_or("");
+    let manifest = std::str::from_utf8(manifest_bytes).expect(
+        "weights/manifest.json is not valid UTF-8 — regenerate with tools/quantize_onnx.py",
+    );
     let validation_passed = manifest.contains("\"validation_passed\": true")
         || manifest.contains("\"validation_passed\":true");
     let strict = matches!(
