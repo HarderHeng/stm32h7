@@ -27,13 +27,18 @@ fn main() {
     println!("cargo:rerun-if-changed=weights/manifest.json");
     println!("cargo:rerun-if-env-changed=STRICT_WEIGHTS");
 
-    /* Weight validation gate: warns on synthetic weights; hard-fails when STRICT_WEIGHTS=1. */
+    /* Weight validation gate: warns on synthetic weights; hard-fails when STRICT_WEIGHTS
+ * is one of: 1, true, yes, on. Any other value (unset, empty, "0", "false") keeps
+ * dev mode where only a warning is printed. */
 
     let manifest_bytes = include_bytes!("weights/manifest.json");
     let manifest = std::str::from_utf8(manifest_bytes).unwrap_or("");
     let validation_passed = manifest.contains("\"validation_passed\": true")
         || manifest.contains("\"validation_passed\":true");
-    let strict = env::var("STRICT_WEIGHTS").is_ok();
+    let strict = matches!(
+        env::var("STRICT_WEIGHTS").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+    );
 
     if !validation_passed {
         eprintln!(
@@ -45,13 +50,13 @@ fn main() {
              Fix: re-run tools/quantize_onnx.py against a trained policy.onnx:\n\
                python3 tools/quantize_onnx.py --input <policy.onnx> \\\n\
        --output weights/ --strict\n\n\
-             To force-allow anyway (dev only): STRICT_WEIGHTS=1 cargo build\n\
-             To override this warning in CI/release: STRICT_WEIGHTS=1\n\
+             To override in dev: leave STRICT_WEIGHTS unset (or =0/false/no/off).\n\
+             To enforce strict mode: STRICT_WEIGHTS=1 cargo build\n\
              ================================================================="
         );
         if strict {
             panic!(
-                "Refusing to build: weights failed validation. Set STRICT_WEIGHTS=0 to override."
+                "Refusing to build: weights failed validation. Unset STRICT_WEIGHTS (or =0/false) to override."
             );
         }
     }
