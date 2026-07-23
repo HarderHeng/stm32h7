@@ -4,12 +4,13 @@
 #   ./scripts/flash.sh           # build + flash + monitor RTT
 #   ./scripts/flash.sh build     # build only
 #   ./scripts/flash.sh flash     # flash only (assumes already built)
-#   ./scripts/flash.sh rtt      # monitor RTT only
+#   ./scripts/flash.sh rtt       # monitor RTT only
 #   ./scripts/flash.sh size      # print binary size
+#   ./scripts/flash.sh artifacts # write ELF + bin + hex to artifacts/
 
 set -euo pipefail
 
-CHIP="${CHIP:-STM32H743VITx}"
+CHIP="${CHIP:-STM32H743ZI}"
 PROFILE="${PROFILE:-release}"
 TARGET="thumbv7em-none-eabihf"
 APP="stm32h7"
@@ -19,8 +20,8 @@ ARTIFACTS="artifacts"
 cmd="${1:-all}"
 
 build() {
-    echo ">>> cargo build --${PROFILE}"
-    cargo build --"${PROFILE}"
+    echo ">>> cargo build --${PROFILE} --target ${TARGET}"
+    cargo build --"${PROFILE}" --target "${TARGET}"
 }
 
 flash() {
@@ -52,10 +53,11 @@ size() {
 }
 
 case "$cmd" in
-    build)  build ;;
-    flash)  flash ;;
-    rtt)    rtt ;;
-    size)   size ;;
-    all)    build && flash && echo "(run './scripts/flash.sh rtt' in another shell for logs)" ;;
-    *)      echo "Unknown command: $cmd"; echo "Usage: $0 {build|flash|rtt|size|all}"; exit 1 ;;
+    build)     build ;;
+    flash)     flash ;;
+    rtt)       rtt ;;
+    size)      size ;;
+    artifacts) artifacts ;;
+    all)       build && flash && echo "(run './scripts/flash.sh rtt' in another shell for logs)" ;;
+    *)         echo "Unknown command: $cmd"; echo "Usage: $0 {build|flash|rtt|size|artifacts|all}"; exit 1 ;;
 esac
