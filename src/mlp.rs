@@ -41,8 +41,10 @@ pub const SCALES: [(f32, f32); 4] = [
 /// ELU activation with Taylor-series approximation of `e^x - 1` for negative `x`.
 ///
 /// Accurate to ~1e-5 for `|x| < 3`. Avoids `libm` dependency in `no_std`.
+/// NaN collapses to 0; Inf passes through (ELU(+Inf) = +Inf mathematically).
 #[inline]
 pub fn elu(x: f32) -> f32 {
+    if x.is_nan() { return 0.0; }
     if x >= 0.0 {
         x
     } else {
@@ -166,6 +168,15 @@ mod tests {
         assert_eq!(clip(-200.0, -100.0, 100.0), -100.0);
         assert_eq!(clip(200.0, -100.0, 100.0), 100.0);
         assert_eq!(clip(0.0, -100.0, 100.0), 0.0);
+    }
+
+    #[test]
+    fn elu_nan_collapses_to_zero() {
+        // NaN must NOT propagate through the MLP activation; collapse to
+        // 0 so the layer can continue computing meaningful downstream values.
+        assert_eq!(elu(f32::NAN), 0.0);
+        assert_eq!(elu(f32::INFINITY), f32::INFINITY);
+        assert_eq!(elu(f32::NEG_INFINITY), f32::NEG_INFINITY);
     }
 
     #[test]
