@@ -158,10 +158,11 @@ impl Pipeline {
     }
 
     /// Convert URDF/motor index (0..=22) to the DAMIAO CAN motor_id (1..=23).
-    /// Panics in debug if out of range; the cast is intentional at the call
-    /// sites so a mis-indexed loop is caught immediately.
+    /// Asserts in both debug and release if out of range — the cast
+    /// would otherwise silently wrap modulo 256 and send frames to the
+    /// wrong motor (or worse, a nonexistent one).
     fn motor_id_for(idx: usize) -> u8 {
-        debug_assert!(idx < 23, "motor index {idx} out of range (max 22)");
+        assert!(idx < 23, "motor index {idx} out of range (max 22)");
         (idx + 1) as u8
     }
 
