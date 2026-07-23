@@ -70,4 +70,33 @@ pub const FRAME_STACK: usize = 10;
 pub const INFERENCE_PERIOD_MS: u32 = 20; // 50 Hz
 pub const CONTROL_PERIOD_MS: u32 = 4; // 250 Hz
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// USD2URDF is used by Mlp::post_process as `out_action[USD2URDF[i]]`
+    /// — a duplicate or out-of-range index would silently overwrite the
+    /// wrong joint and (with duplicates) drop a joint from the output.
+    /// This test fails at compile time of #[cfg(test)] if either happens.
+    #[test]
+    fn usd2urdf_is_a_valid_permutation_of_0_to_22() {
+        assert_eq!(USD2URDF.len(), 23, "USD2URDF must have exactly 23 entries");
+        let mut seen = [false; 23];
+        for (i, &v) in USD2URDF.iter().enumerate() {
+            assert!(v < 23, "USD2URDF[{i}] = {v} is out of range");
+            assert!(!seen[v], "USD2URDF has duplicate value {v}");
+            seen[v] = true;
+        }
+        assert!(seen.iter().all(|&x| x), "USD2URDF missing some value in 0..23");
+    }
+
+    #[test]
+    fn config_arrays_have_correct_lengths() {
+        assert_eq!(DEFAULT_JOINT_ANGLES.len(), 23);
+        assert_eq!(KP.len(), 23);
+        assert_eq!(KD.len(), 23);
+        assert_eq!(MOTOR_SIGN.len(), 23);
+    }
+}
+
 
