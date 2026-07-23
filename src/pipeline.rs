@@ -162,6 +162,9 @@ impl Pipeline {
     /// Compute ankle motor torques from joint-space PD law.
     /// Called by `step_control` for the 4 ankle motors (indices 4,5,10,11).
     /// Returns `[tau_pitch_motor, tau_roll_motor]` in motor space.
+    /// Returns `[0.0; 2]` if forward kinematics fails to converge — the
+    /// motors then receive zero torque and only their kd damping applies,
+    /// which is the safest fallback (robot doesn't actively fight itself).
     pub fn compute_ankle_torques(&self, side: Side) -> [f32; 2] {
         let ankle = if side { &self.ankle_left } else { &self.ankle_right };
         let urdf_base = if side { 4 } else { 10 };
@@ -174,7 +177,21 @@ impl Pipeline {
             self.joint.velocity[urdf_base] * MOTOR_SIGN[urdf_base] as f32,
             self.joint.velocity[urdf_base + 1] * MOTOR_SIGN[urdf_base + 1] as f32,
         ];
+
+        // Guard against NaN propagation: motor_angles going NaN means encoder
+        // feedback is corrupt or uninitialized. Skip torque calculation entirely
+        // and let kd damping hold position (zero tau is a safe neutral).
+        if motor_angles.iter().any(|v| !v.is_finite())
+            || motor_vels.iter().any(|v| !v.is_finite())
+        {
+            return [0.0, 0.0];
+        }
+
         let fk = ankle.forward_kinematics(&motor_angles);
+        if !fk.converged {
+            return [0.0, 0.0];
+        }
+
         let tau_joint = [
             KP[urdf_base] * (self.action[urdf_base] - fk.pitch) + KD[urdf_base] * (0.0 - motor_vels[0]),
             KP[urdf_base + 1] * (self.action[urdf_base + 1] - fk.roll) + KD[urdf_base + 1] * (0.0 - motor_vels[1]),
@@ -316,6 +333,35 @@ mod tests {
         // Old buggy code would saturate tau_raw (~0xFFF). New code produces
         // a finite PD output proportional to the joint error.
         assert!(tau_raw < 0x0FFF, "ankle tau_raw should not saturate, got 0x{:X}", tau_raw);
+    }
+
+    #[test]
+    fn compute_ankle_torques_returns_zero_on_nan_input() {
+        // If encoder feedback is corrupt (NaN), we must NOT propagate it
+        // through the decoupling Jacobian — that would produce NaN torque
+        // commands and the motor firmware would interpret them as extreme
+        // values. Safe fallback is zero torque (kd damping holds position).
+        let mut p = Pipeline::new();
+        p.joint.position[4] = f32::NAN;
+        p.joint.velocity[4] = 0.0;
+        p.joint.position[5] = 0.0;
+        p.joint.velocity[5] = 0.0;
+        let tau = p.compute_ankle_torques(true);
+        assert_eq!(tau, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn compute_ankle_torques_returns_zero_on_workspace_violation() {
+        // Motor angles far outside the mechanism workspace trigger FK
+        // divergence guard. compute_ankle_torques must return zeros
+        // instead of using the unreliable Jacobian.
+        let mut p = Pipeline::new();
+        p.joint.position[4] = 100.0;
+        p.joint.velocity[4] = 0.0;
+        p.joint.position[5] = -100.0;
+        p.joint.velocity[5] = 0.0;
+        let tau = p.compute_ankle_torques(true);
+        assert_eq!(tau, [0.0, 0.0]);
     }
 
     #[test]
