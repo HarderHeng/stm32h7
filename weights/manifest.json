@@ -1,0 +1,75 @@
+{
+  "source_onnx": "../roboto_origin/modules/atom01_deploy/src/inference/models/policy.onnx",
+  "input_shape": [
+    1,
+    780
+  ],
+  "output_shape": [
+    1,
+    23
+  ],
+  "layer_dims": [
+    780,
+    512,
+    256,
+    128,
+    23
+  ],
+  "layers": [
+    {
+      "name": "layer_1",
+      "shape": [
+        780,
+        512
+      ],
+      "weight_path": "weights/w1_int8.bin",
+      "bias_path": "weights/b1_int8.bin",
+      "weight_scale": 0.0014117147744171262,
+      "bias_scale": 1.0,
+      "weight_bytes": 399360,
+      "bias_bytes": 512
+    },
+    {
+      "name": "layer_2",
+      "shape": [
+        512,
+        256
+      ],
+      "weight_path": "weights/w2_int8.bin",
+      "bias_path": "weights/b2_int8.bin",
+      "weight_scale": 0.0015700386734459344,
+      "bias_scale": 1.0,
+      "weight_bytes": 131072,
+      "bias_bytes": 256
+    },
+    {
+      "name": "layer_3",
+      "shape": [
+        256,
+        128
+      ],
+      "weight_path": "weights/w3_int8.bin",
+      "bias_path": "weights/b3_int8.bin",
+      "weight_scale": 0.0018471028861098402,
+      "bias_scale": 1.0,
+      "weight_bytes": 32768,
+      "bias_bytes": 128
+    },
+    {
+      "name": "layer_4",
+      "shape": [
+        128,
+        23
+      ],
+      "weight_path": "weights/w4_int8.bin",
+      "bias_path": "weights/b4_int8.bin",
+      "weight_scale": 0.0026887096757963885,
+      "bias_scale": 1.0,
+      "weight_bytes": 2944,
+      "bias_bytes": 23
+    }
+  ],
+  "validation_max_rel_err": 0.36073607206344604,
+  "validation_passed": false,
+  "validation_samples": 10
+}

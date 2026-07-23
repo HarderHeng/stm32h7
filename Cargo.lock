@@ -224,6 +224,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "defmt-test"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d326e211b94939affafdf96f5c1baf8745b960037dcf763f813597d32b03d51"
+dependencies = [
+ "defmt 1.0.1",
+ "defmt-test-macros",
+ "semihosting",
+]
+
+[[package]]
+name = "defmt-test-macros"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a7563a5468e1a1bd97f44cb75b658c2feec75af2b1389e70f4c0677b8402edd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.116",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -387,23 +409,19 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
- "critical-section",
  "defmt 1.0.1",
  "defmt-rtt",
- "embassy-embedded-hal",
+ "defmt-test",
  "embassy-executor",
  "embassy-futures",
  "embassy-stm32",
- "embassy-sync",
  "embassy-time",
  "embassy-usb",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "grounded",
  "heapless 0.9.2",
  "panic-probe",
- "static_cell",
 ]
 
 [[package]]
@@ -631,15 +649,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grounded"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a7c71ebd5d467418b46639b622912cd0338ce59766bd19130bffcbf9ac6df2c"
-dependencies = [
- "portable-atomic",
-]
-
-[[package]]
 name = "hash32"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -815,6 +824,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b328e2cb950eeccd55b7f55c3a963691455dcd044cfb5354f0c5e68d2c2d6ee2"
 
 [[package]]
+name = "semihosting"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8e4abf97879f4e80db69a9fba7bd64998e9bdad25f58ef045a778e191172fd4"
+
+[[package]]
 name = "semver"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -879,15 +894,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "static_cell"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
-dependencies = [
- "portable-atomic",
-]
 
 [[package]]
 name = "stm32-fmc"
