@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use defmt::{panic, *};
+use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_stm32::usb::{Driver, Instance};
@@ -17,14 +17,16 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Hello World!");
+    info!("Atom01 firmware booting...");
+    info!("  target: STM32H743");
+    info!("  framework: Embassy async");
 
     let mut config = Config::default();
     {
         use embassy_stm32::rcc::*;
         config.rcc.hsi = Some(HSIPrescaler::DIV1);
         config.rcc.csi = true;
-        config.rcc.hsi48 = Some(Hsi48Config { sync_from_usb: true }); // needed for USB
+        config.rcc.hsi48 = Some(Hsi48Config { sync_from_usb: true });
         config.rcc.pll1 = Some(Pll {
             source: PllSource::HSI,
             prediv: PllPreDiv::DIV4,
@@ -34,37 +36,30 @@ async fn main(_spawner: Spawner) {
             divq: None,
             divr: None,
         });
-        config.rcc.sys = Sysclk::PLL1_P; // 400 Mhz
-        config.rcc.ahb_pre = AHBPrescaler::DIV2; // 200 Mhz
-        config.rcc.apb1_pre = APBPrescaler::DIV2; // 100 Mhz
-        config.rcc.apb2_pre = APBPrescaler::DIV2; // 100 Mhz
-        config.rcc.apb3_pre = APBPrescaler::DIV2; // 100 Mhz
-        config.rcc.apb4_pre = APBPrescaler::DIV2; // 100 Mhz
+        config.rcc.sys = Sysclk::PLL1_P;
+        config.rcc.ahb_pre = AHBPrescaler::DIV2;
+        config.rcc.apb1_pre = APBPrescaler::DIV2;
+        config.rcc.apb2_pre = APBPrescaler::DIV2;
+        config.rcc.apb3_pre = APBPrescaler::DIV2;
+        config.rcc.apb4_pre = APBPrescaler::DIV2;
         config.rcc.voltage_scale = VoltageScale::Scale1;
         config.rcc.mux.usbsel = mux::Usbsel::HSI48;
     }
     let p = embassy_stm32::init(config);
 
-    // Create the driver, from the HAL.
+    info!("Init complete — bringing up USB-CDC shell");
+
     let mut ep_out_buffer = [0u8; 256];
     let mut config = embassy_stm32::usb::Config::default();
-
-    // Do not enable vbus_detection. This is a safe default that works in all boards.
-    // However, if your USB device is self-powered (can stay powered on if USB is unplugged), you need
-    // to enable vbus_detection to comply with the USB spec. If you enable it, the board
-    // has to support it or USB won't work at all. See docs on `vbus_detection` for details.
     config.vbus_detection = false;
 
     let driver = Driver::new_fs(p.USB_OTG_FS, Irqs, p.PA12, p.PA11, &mut ep_out_buffer, config);
 
-    // Create embassy-usb Config
     let mut config = embassy_usb::Config::new(0xc0de, 0xcafe);
-    config.manufacturer = Some("Embassy");
-    config.product = Some("USB-serial example");
+    config.manufacturer = Some("RoboParty");
+    config.product = Some("Atom01");
     config.serial_number = Some("12345678");
 
-    // Create embassy-usb DeviceBuilder using the driver and config.
-    // It needs some buffers for building the descriptors.
     let mut config_descriptor = [0; 256];
     let mut bos_descriptor = [0; 256];
     let mut control_buf = [0; 64];
@@ -76,86 +71,103 @@ async fn main(_spawner: Spawner) {
         config,
         &mut config_descriptor,
         &mut bos_descriptor,
-        &mut [], // no msos descriptors
+        &mut [],
         &mut control_buf,
     );
 
-    // Create classes on the builder.
     let mut class = CdcAcmClass::new(&mut builder, &mut state, 64);
-
-    // Build the builder.
     let mut usb = builder.build();
 
-    // Run the USB device.
     let usb_fut = usb.run();
 
-    // Do stuff with the class!
     let echo_fut = async {
         loop {
             class.wait_connection().await;
-            info!("Connected");
-            let _ = echo(&mut class).await;
-            info!("Disconnected");
+            info!("USB-CDC shell connected");
+            // Send the initial prompt so the user knows the shell is ready.
+            // (read_packet would otherwise wait silently for the first byte.)
+            // If the host just disconnected, this write fails with Disabled —
+            // echo() will also fail immediately and we re-loop.
+            let _ = write_best_effort(&mut class, b"$atom01: ").await;
+            // echo() only returns Err when the USB endpoint is disabled
+            // (host unplugged); BufferOverflow is handled inline.
+            if echo(&mut class).await.is_err() {
+                info!("USB-CDC shell disconnected");
+            }
         }
     };
 
-    // Run everything concurrently.
-    // If we had made everything `'static` above instead, we could do this using separate tasks instead.
     join(usb_fut, echo_fut).await;
 }
 
-struct Disconnected {}
-
-impl From<EndpointError> for Disconnected {
-    fn from(val: EndpointError) -> Self {
-        match val {
-            EndpointError::BufferOverflow => panic!("Buffer overflow"),
-            EndpointError::Disabled => Disconnected {},
+/// Best-effort USB write that survives BufferOverflow without aborting the
+/// shell loop. Disabled still propagates (real disconnect).
+async fn write_best_effort<'d, T: Instance + 'd>(
+    class: &mut CdcAcmClass<'d, Driver<'d, T>>,
+    data: &[u8],
+) -> Result<(), EndpointError> {
+    match class.write_packet(data).await {
+        Ok(()) => Ok(()),
+        Err(EndpointError::BufferOverflow) => {
+            warn!("USB CDC TX buffer overflow — dropped {} bytes", data.len());
+            Ok(())
         }
+        Err(EndpointError::Disabled) => Err(EndpointError::Disabled),
     }
 }
 
-
 async fn echo<'d, T: Instance + 'd>(
     class: &mut CdcAcmClass<'d, Driver<'d, T>>
-) -> Result<(), Disconnected> {
-
+) -> Result<(), EndpointError> {
     let mut rx_buf: [u8; 512] = [0; 512];
     let mut line_buf: [u8; 512] = [0; 512];
     let mut line_len: usize = 0;
+    let mut last_was_cr: bool = false;
     loop {
-        let n = class.read_packet(&mut rx_buf).await?;
+        let n = match class.read_packet(&mut rx_buf).await {
+            Ok(n) => n,
+            Err(EndpointError::BufferOverflow) => {
+                warn!("USB CDC RX buffer overflow — dropped packet");
+                continue;
+            }
+            Err(EndpointError::Disabled) => return Err(EndpointError::Disabled),
+        };
 
         for &b in &rx_buf[..n] {
             match b {
                 b'\r' | b'\n' => {
+                    // Skip the second byte of a CR+LF pair so we don't emit
+                    // an empty extra line + duplicate prompt.
+                    let is_pair_continuation = b == b'\n' && last_was_cr;
+                    last_was_cr = b == b'\r';
+                    if is_pair_continuation { continue; }
+
+                    write_best_effort(class, b"\r\n").await?;
                     if line_len > 0 {
                         let line = &line_buf[..line_len];
-
-                        class.write_packet(b"\r\n").await?;
-                        class.write_packet(line).await?;
-                        class.write_packet(b"\r\n$shell: ").await?;
-
+                        write_best_effort(class, line).await?;
                         line_len = 0;
                     }
+                    write_best_effort(class, b"$atom01: ").await?;
                 }
-
                 b'\x08' | b'\x7f' => {
+                    last_was_cr = false;
                     if line_len > 0 {
                         line_len -= 1;
-                        class.write_packet(b"\x08 \x08").await?;
+                        write_best_effort(class, b"\x08 \x08").await?;
                     }
                 }
-
                 _ => {
+                    last_was_cr = false;
                     if line_len < line_buf.len() {
                         line_buf[line_len] = b;
                         line_len += 1;
-                        class.write_packet(&[b]).await?;
+                        write_best_effort(class, &[b]).await?;
+                    } else {
+                        write_best_effort(class, b"\x07").await?;
                     }
                 }
             }
-
         }
     }
 }
