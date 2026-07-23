@@ -94,6 +94,12 @@ pub enum DecodeError {
 /// never saturates.
 #[inline]
 pub fn range_map(x: f32, in_min: f32, in_max: f32, out_min: u32, out_max: u32) -> u32 {
+    // Degenerate range guard: if in_min == in_max the denominator below
+    // would be 0. Current callers never hit this, but a future caller
+    // could. Return the midpoint of the output range as a safe default.
+    if in_min == in_max {
+        return (out_min + out_max) / 2;
+    }
     let x = clip_f32(x, in_min, in_max);
     let t = (x - in_min) / (in_max - in_min);
     let span = (out_max - out_min) as f32;
@@ -344,6 +350,15 @@ mod tests {
         // motor_id 23 → can_id 39.
         let frame = CanFrame { id: CanId(39), dlc: 8, data: [0; 8] };
         assert_eq!(decode_mit_feedback(&frame).unwrap().motor_id, 23);
+    }
+
+    #[test]
+    fn range_map_handles_degenerate_range() {
+        // In_min == in_max would normally produce NaN (0/0) in the
+        // fraction. The guard returns the midpoint of the output range
+        // as a safe default.
+        let mid = range_map(0.0, 5.0, 5.0, 0, 0xFFFF);
+        assert_eq!(mid, 0x7FFF);
     }
 
     #[test]
