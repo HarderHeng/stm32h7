@@ -1,7 +1,10 @@
-//! Atom01 robot firmware — full control main entry.
+//! Atom01 robot firmware — control mode main entry.
 //!
-//! Starts the Embassy executor, initializes IMU + CAN buses,
-//! spawns inference (50Hz) and control (250Hz) tasks.
+//! Starts the Embassy executor, configures the clock tree, and spawns
+//! the inference loop. The control loop is intentionally NOT spawned
+//! yet because it requires real Embassy driver wiring (CAN, IMU, SPI
+//! flash) that lives in `src/drivers.rs` as stubs. When the drivers
+//! are implemented, add a `control_task` here per the architecture doc.
 //!
 //! **Pin mapping is board-specific** — adjust in `init()` before flashing.
 
@@ -44,27 +47,31 @@ async fn main(spawner: Spawner) {
         config.rcc.apb4_pre = APBPrescaler::DIV2;
         config.rcc.voltage_scale = VoltageScale::Scale1;
     }
-    let p = embassy_stm32::init(config);
-    let _periph = &p; // available for wiring CAN/IMU in Phase 6/7
+    let _p = embassy_stm32::init(config);
 
-    // --- TODO: replace pins with your board wiring ---
+    // --- TODO: wire real Embassy peripherals ---
     // CAN1: PB8 (RX) / PB9 (TX), 1 Mbps
     // IMU: USART4 (PA0=TX / PA1=RX), 921600 baud
     // See src/drivers.rs doc comments for embassy peripheral hook points.
 
-    info!("Init complete. Spawning tasks...");
+    info!("Init complete. Spawning inference task...");
 
     let pipe = Pipeline::new();
 
-    // Spawn inference task (50 Hz)
+    // Spawn inference task (50 Hz). Control task (250 Hz) is deferred
+    // until Phase 6/7 driver wiring lands — step_control() would dispatch
+    // MIT frames to the (still-stub) CAN bus.
     spawner.spawn(inference_loop(pipe)).unwrap();
 
-    info!("Tasks spawned — running");
+    info!("Inference task running. cmd_vel is a placeholder (zero) until");
+    info!("Phase 7 wires a real source (USB shell / ROS2 / wired remote).");
 }
 
 #[embassy_executor::task]
 async fn inference_loop(mut pipeline: Pipeline) {
     let mut ticker = Ticker::every(Duration::from_millis(20));
+    // TODO: replace with a shared channel fed by the control source
+    // (USB shell command, ROS2 topic, or wired remote).
     let cmd_vel = [0.0_f32; 3];
     loop {
         ticker.next().await;
