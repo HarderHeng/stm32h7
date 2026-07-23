@@ -82,7 +82,6 @@ pub struct ImuState {
     pub ang_vel: [f32; 3],
     pub lin_acc: [f32; 3],
     pub temperature: f32,
-    pub updated: bool,
 }
 
 pub struct ImuSerial;
@@ -93,7 +92,7 @@ impl ImuSerial {
         static S: ImuState = ImuState {
             quat_w: 1.0, quat_x: 0.0, quat_y: 0.0, quat_z: 0.0,
             ang_vel: [0.0; 3], lin_acc: [0.0; 3],
-            temperature: 25.0, updated: false,
+            temperature: 25.0,
         };
         &S
     }
