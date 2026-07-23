@@ -328,12 +328,16 @@ impl AnkleDecoupler {
     }
 
     pub fn forward_kinematics(&self, motor_angles: &[f32; 2]) -> FkResult {
-        // Newton iteration, mirroring decouple_atom01.cpp:161-205
+        // Newton iteration, mirroring decouple_atom01.cpp:161-205.
+        // Damped (ALPHA=0.5) and bounded; we also abort if the joint
+        // estimate diverges outside the physically reachable range, since
+        // NaN/Inf guard alone wouldn't catch monotonic blow-up.
         const MAX_ITER: u8 = 100;
         const TOLERANCE: f32 = 1e-3;
         const ALPHA: f32 = 0.5;
+        const JOINT_LIMIT: f32 = 1.5; // ~86°; mechanism reach is well under this.
 
-        let mut x_k = [0.0_f32, 0.0_f32]; // [pitch, roll] (matches inverse_kinematics arg order)
+        let mut x_k = [0.0_f32, 0.0_f32]; // [pitch, roll]
         let mut last_error = [10.0_f32, 10.0_f32];
         let mut iterations = 0u8;
         let mut jac = JacobianResult::default();
@@ -344,7 +348,7 @@ impl AnkleDecoupler {
             let ik = self.inverse_kinematics(pitch, roll);
             jac = self.jacobian(&ik, pitch);
 
-            if jac.j_motor2joint.iter().flatten().any(|v| v.is_nan()) {
+            if jac.j_motor2joint.iter().flatten().any(|v| !v.is_finite()) {
                 return FkResult {
                     pitch: 0.0,
                     roll: 0.0,
@@ -355,8 +359,30 @@ impl AnkleDecoupler {
             }
 
             let f_error = [motor_angles[0] - ik.theta[0], motor_angles[1] - ik.theta[1]];
-            x_k[0] += ALPHA * (jac.j_motor2joint[0][0] * f_error[0] + jac.j_motor2joint[0][1] * f_error[1]);
-            x_k[1] += ALPHA * (jac.j_motor2joint[1][0] * f_error[0] + jac.j_motor2joint[1][1] * f_error[1]);
+            let update = [
+                ALPHA * (jac.j_motor2joint[0][0] * f_error[0] + jac.j_motor2joint[0][1] * f_error[1]),
+                ALPHA * (jac.j_motor2joint[1][0] * f_error[0] + jac.j_motor2joint[1][1] * f_error[1]),
+            ];
+
+            // Divergence guard: bail out before the estimate blows up.
+            // Catches pathological motor_angles that put the mechanism
+            // outside its workspace (e.g., very large inputs that wrap
+            // around the asin branch) where Newton would otherwise
+            // iterate forever producing larger and larger joint angles.
+            if update[0].abs() > JOINT_LIMIT || update[1].abs() > JOINT_LIMIT
+                || !update[0].is_finite() || !update[1].is_finite()
+            {
+                return FkResult {
+                    pitch: 0.0,
+                    roll: 0.0,
+                    jacobian: [[1.0, 0.0], [0.0, 1.0]],
+                    iterations,
+                    converged: false,
+                };
+            }
+
+            x_k[0] += update[0];
+            x_k[1] += update[1];
             iterations += 1;
             last_error = f_error;
 
@@ -493,6 +519,28 @@ mod tests {
                 "roll: target={target_roll}, got={}", fk.roll
             );
         }
+    }
+
+    #[test]
+    fn fk_bails_out_on_pathological_motor_angles() {
+        // Motor angles way outside the mechanism workspace must not blow up
+        // Newton iteration; we should bail out with converged=false rather
+        // than iterate to max_iter producing garbage joint angles.
+        let d = AnkleDecoupler::new(true);
+        let fk = d.forward_kinematics(&[100.0, -100.0]);
+        assert!(!fk.converged, "FK should detect divergence");
+        // Returned joint angles must be finite even on the failure path.
+        assert!(fk.pitch.is_finite());
+        assert!(fk.roll.is_finite());
+    }
+
+    #[test]
+    fn fk_bails_out_on_nan_motor_angles() {
+        let d = AnkleDecoupler::new(true);
+        let fk = d.forward_kinematics(&[f32::NAN, 0.0]);
+        assert!(!fk.converged);
+        assert!(fk.pitch.is_finite());
+        assert!(fk.roll.is_finite());
     }
 
     #[test]
