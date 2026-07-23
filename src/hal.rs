@@ -195,8 +195,13 @@ impl MockSpiFlash {
         }
 
         fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), SpiError> {
+            // Use checked arithmetic so a hostile / buggy addr doesn't
+            // silently wrap around and read from offset 0.
             let start = addr as usize;
-            let end = start + buf.len();
+            let end = match start.checked_add(buf.len()) {
+                Some(e) => e,
+                None => return Err(SpiError::Hardware),
+            };
             if end > self.data.len() {
                 return Err(SpiError::Hardware);
             }
@@ -233,6 +238,21 @@ impl MockSpiFlash {
             assert_eq!(s.read_byte(), Some(b'e'));
             s.write_bytes(b"ok").unwrap();
             assert_eq!(s.tx_log.as_slice(), b"ok");
+        }
+
+        #[test]
+        fn mock_spi_rejects_overflow_addr() {
+            // addr + buf.len() must not wrap around on 32-bit platforms.
+            // Without checked_add, addr=u32::MAX would silently read from
+            // offset 0 (or panic in release mode without checks).
+            let mut flash = MockSpiFlash::new();
+            flash.preload(&[1, 2, 3, 4]);
+            let mut buf = [0u8; 8];
+            assert_eq!(flash.read(u32::MAX, &mut buf), Err(SpiError::Hardware));
+            // And a legitimate small read still works.
+            let mut buf2 = [0u8; 2];
+            assert_eq!(flash.read(1, &mut buf2), Ok(()));
+            assert_eq!(buf2, [2, 3]);
         }
     }
 }
