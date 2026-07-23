@@ -61,7 +61,8 @@ async fn main(spawner: Spawner) {
     // Spawn inference task (50 Hz). Control task (250 Hz) is deferred
     // until Phase 6/7 driver wiring lands — step_control() would dispatch
     // MIT frames to the (still-stub) CAN bus.
-    spawner.spawn(inference_loop(pipe)).unwrap();
+    spawner.spawn(inference_loop(pipe))
+        .expect("inference task spawn failed (executor full?)");
 
     info!("Inference task running. cmd_vel is a placeholder (zero) until");
     info!("Phase 7 wires a real source (USB shell / ROS2 / wired remote).");
