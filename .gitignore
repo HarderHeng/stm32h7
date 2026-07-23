@@ -1,4 +1,4 @@
 target/
 examples/
 artifacts/
-.omo/
+.omo/tools/__pycache__/
